@@ -107,3 +107,4 @@ async def test_workspace_crud_and_tenant_isolation(test_env):
     # 7. Workspace no longer exists
     get_after = await client.get(f"/api/v1/workspaces/{ws_id}", headers=h1)
     assert get_after.status_code == 404
+

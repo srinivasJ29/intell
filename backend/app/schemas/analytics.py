@@ -22,3 +22,4 @@ class AnalyticsSummaryResponse(BaseModel):
     storage_used_bytes: int
     workspaces_breakdown: List[WorkspaceMetric]
     system_status: Dict[str, Any]
+

@@ -48,3 +48,4 @@ class ConversationResponse(BaseModel):
 
 class ConversationDetailResponse(ConversationResponse):
     messages: List[MessageResponse] = []
+

@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react';
 import {
   ZoomIn,
   ZoomOut,
-  RotateCw,
   ChevronLeft,
   ChevronRight,
-  Maximize2,
   FileText,
   ExternalLink,
+  Loader2,
+  AlertTriangle,
 } from 'lucide-react';
 import { DocumentItem } from '../../types';
 
@@ -19,6 +19,9 @@ interface PdfViewerProps {
 export const PdfViewer: React.FC<PdfViewerProps> = ({ document, targetPage }) => {
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [zoomLevel, setZoomLevel] = useState<number>(100);
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [isLoadingPdf, setIsLoadingPdf] = useState<boolean>(false);
+  const [pdfLoadError, setPdfLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (targetPage && targetPage > 0) {
@@ -30,6 +33,44 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ document, targetPage }) =>
     if (document) {
       setCurrentPage(targetPage || 1);
     }
+  }, [document?.id]);
+
+  useEffect(() => {
+    if (!document) {
+      setBlobUrl(null);
+      return;
+    }
+
+    let isMounted = true;
+    let createdUrl: string | null = null;
+    setIsLoadingPdf(true);
+    setPdfLoadError(null);
+
+    const token = localStorage.getItem('intelliresearch_access_token');
+    fetch(`/api/v1/documents/${document.id}/file`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+        return res.blob();
+      })
+      .then((blob) => {
+        if (!isMounted) return;
+        createdUrl = URL.createObjectURL(blob);
+        setBlobUrl(createdUrl);
+      })
+      .catch((err) => {
+        if (!isMounted) return;
+        setPdfLoadError(err.message || 'Failed to stream PDF');
+      })
+      .finally(() => {
+        if (isMounted) setIsLoadingPdf(false);
+      });
+
+    return () => {
+      isMounted = false;
+      if (createdUrl) URL.revokeObjectURL(createdUrl);
+    };
   }, [document?.id]);
 
   if (!document) {
@@ -48,7 +89,9 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ document, targetPage }) =>
     );
   }
 
-  const pdfUrl = `/api/v1/documents/${document.id}/file#page=${currentPage}&zoom=${zoomLevel}`;
+  const token = localStorage.getItem('intelliresearch_access_token');
+  const directTabUrl = `/api/v1/documents/${document.id}/file?token=${encodeURIComponent(token || '')}#page=${currentPage}`;
+  const pdfViewSource = blobUrl ? `${blobUrl}#page=${currentPage}&zoom=${zoomLevel}` : directTabUrl;
 
   const handlePrevPage = () => {
     if (currentPage > 1) setCurrentPage((prev) => prev - 1);
@@ -105,8 +148,8 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ document, targetPage }) =>
             </button>
           </div>
 
-          {/* Zoom Controls */}
-          <div className="flex items-center gap-1 bg-mono-offwhite border border-mono-border rounded p-0.5 text-xs font-mono">
+          {/* Zoom controls */}
+          <div className="flex items-center gap-1 bg-mono-offwhite border border-mono-border rounded px-1.5 py-0.5 text-xs font-mono">
             <button
               onClick={() => setZoomLevel((z) => Math.max(50, z - 15))}
               className="p-1 rounded hover:bg-mono-light text-mono-dark hover:text-mono-black transition-colors"
@@ -114,9 +157,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ document, targetPage }) =>
             >
               <ZoomOut size={13} />
             </button>
-            <span className="px-1 text-[11px] text-mono-deepblack min-w-[36px] text-center">
-              {zoomLevel}%
-            </span>
+            <span className="text-mono-dark min-w-[36px] text-center">{zoomLevel}%</span>
             <button
               onClick={() => setZoomLevel((z) => Math.min(200, z + 15))}
               className="p-1 rounded hover:bg-mono-light text-mono-dark hover:text-mono-black transition-colors"
@@ -128,7 +169,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ document, targetPage }) =>
 
           {/* Open full file tab */}
           <a
-            href={`/api/v1/documents/${document.id}/file`}
+            href={directTabUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="p-1.5 rounded hover:bg-mono-light text-mono-dark hover:text-mono-black transition-colors"
@@ -141,26 +182,46 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ document, targetPage }) =>
 
       {/* PDF Canvas Embed */}
       <div className="flex-1 bg-mono-dark/10 relative overflow-hidden flex items-center justify-center p-2">
-        <object
-          key={`${document.id}_page_${currentPage}_zoom_${zoomLevel}`}
-          data={pdfUrl}
-          type="application/pdf"
-          className="w-full h-full rounded shadow-subtle border border-mono-border bg-mono-white"
-        >
+        {isLoadingPdf ? (
           <div className="h-full flex flex-col items-center justify-center p-6 text-center">
-            <p className="text-xs text-mono-dark mb-2">
-              PDF preview directly available via browser viewer.
-            </p>
+            <Loader2 size={24} className="animate-spin text-mono-black mb-2" />
+            <p className="text-xs text-mono-dark">Loading PDF paper...</p>
+          </div>
+        ) : pdfLoadError ? (
+          <div className="h-full flex flex-col items-center justify-center p-6 text-center">
+            <AlertTriangle size={24} className="text-red-700 mb-2" />
+            <p className="text-xs text-red-700 mb-2">{pdfLoadError}</p>
             <a
-              href={`/api/v1/documents/${document.id}/file`}
+              href={directTabUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="text-xs font-medium text-mono-deepblack underline hover:text-mono-dark"
             >
-              Open PDF Document in Tab
+              Open in external viewer
             </a>
           </div>
-        </object>
+        ) : (
+          <object
+            key={`${document.id}_page_${currentPage}_zoom_${zoomLevel}`}
+            data={pdfViewSource}
+            type="application/pdf"
+            className="w-full h-full rounded shadow-subtle border border-mono-border bg-mono-white"
+          >
+            <div className="h-full flex flex-col items-center justify-center p-6 text-center">
+              <p className="text-xs text-mono-dark mb-2">
+                PDF preview loaded. Use controls above to navigate pages.
+              </p>
+              <a
+                href={directTabUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs font-medium text-mono-deepblack underline hover:text-mono-dark"
+              >
+                Open PDF Document in New Tab
+              </a>
+            </div>
+          </object>
+        )}
       </div>
     </div>
   );

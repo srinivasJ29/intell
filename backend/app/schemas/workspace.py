@@ -29,3 +29,4 @@ class WorkspaceResponse(BaseModel):
     conversation_count: Optional[int] = 0
     created_at: datetime
     updated_at: datetime
+

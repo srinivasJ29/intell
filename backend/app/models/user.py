@@ -40,3 +40,4 @@ class User(BaseModel):
     reports: Mapped[List["ResearchReport"]] = relationship(
         "ResearchReport", back_populates="user", cascade="all, delete-orphan"
     )
+

@@ -133,3 +133,4 @@ class ReportGenerationService:
 
 
 report_service = ReportGenerationService()
+

@@ -100,3 +100,4 @@ def test_citation_verification_against_evidence():
     assert len(verified) >= 1
     assert verified[0]["document_id"] == "doc_1"
     assert verified[0]["page_number"] == 4
+

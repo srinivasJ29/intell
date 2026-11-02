@@ -4,6 +4,8 @@ import { Header } from '../components/layout/Header';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
+import { Modal } from '../components/common/Modal';
+import { Input } from '../components/common/Input';
 import {
   Files,
   UploadCloud,
@@ -15,6 +17,8 @@ import {
   CheckCircle2,
   AlertTriangle,
   FolderKanban,
+  Plus,
+  Loader2,
 } from 'lucide-react';
 import { DocumentItem, Workspace } from '../types';
 
@@ -26,21 +30,29 @@ export const DocumentLibraryPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  // New Workspace Modal
+  const [isCreateWsOpen, setIsCreateWsOpen] = useState(false);
+  const [newWsName, setNewWsName] = useState('');
+  const [newWsDesc, setNewWsDesc] = useState('');
+  const [isCreatingWs, setIsCreatingWs] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    const fetchWorkspaces = async () => {
-      try {
-        const ws = await api.request<Workspace[]>('/workspaces/');
-        setWorkspaces(ws);
-        if (ws.length > 0) {
-          setSelectedWsId(ws[0].id);
-        }
-      } catch (e) {
-        console.error('Failed to load workspaces:', e);
+  const fetchWorkspaces = async () => {
+    try {
+      const ws = await api.request<Workspace[]>('/workspaces/');
+      setWorkspaces(ws);
+      if (ws.length > 0) {
+        setSelectedWsId((prev) => (prev && ws.some((w) => w.id === prev) ? prev : ws[0].id));
       }
-    };
+    } catch (e) {
+      console.error('Failed to load workspaces:', e);
+    }
+  };
+
+  useEffect(() => {
     fetchWorkspaces();
   }, []);
 
@@ -60,16 +72,44 @@ export const DocumentLibraryPage: React.FC = () => {
   useEffect(() => {
     if (selectedWsId) {
       loadDocuments(selectedWsId);
-      // Auto-poll if any document is processing
+      // Auto-poll if any document is processing or pending
       const interval = setInterval(() => {
         loadDocuments(selectedWsId);
-      }, 5000);
+      }, 3000);
       return () => clearInterval(interval);
     }
   }, [selectedWsId]);
 
+  const handleCreateWorkspace = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newWsName.trim()) return;
+    setIsCreatingWs(true);
+    try {
+      const created = await api.request<Workspace>('/workspaces/', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: newWsName.trim(),
+          description: newWsDesc.trim() || undefined,
+        }),
+      });
+      setWorkspaces((prev) => [created, ...prev]);
+      setSelectedWsId(created.id);
+      setIsCreateWsOpen(false);
+      setNewWsName('');
+      setNewWsDesc('');
+    } catch (err: any) {
+      setUploadError(err?.message || 'Failed to create workspace.');
+    } finally {
+      setIsCreatingWs(false);
+    }
+  };
+
   const handleFileUpload = async (files: FileList | null) => {
-    if (!files || files.length === 0 || !selectedWsId) return;
+    if (!files || files.length === 0) return;
+    if (!selectedWsId) {
+      setUploadError('Please select or create a research workspace before uploading documents.');
+      return;
+    }
     setIsUploading(true);
     setUploadError(null);
 
@@ -92,6 +132,8 @@ export const DocumentLibraryPage: React.FC = () => {
         }
       );
       setDocuments((prev) => [newDoc, ...prev]);
+      // Refresh workspaces to update paper counts
+      fetchWorkspaces();
     } catch (err: any) {
       setUploadError(err?.message || 'Failed to upload document.');
     } finally {
@@ -107,6 +149,7 @@ export const DocumentLibraryPage: React.FC = () => {
     try {
       await api.request(`/documents/${docId}`, { method: 'DELETE' });
       setDocuments((prev) => prev.filter((d) => d.id !== docId));
+      fetchWorkspaces();
     } catch (err: any) {
       alert(err?.message || 'Failed to delete document');
     }
@@ -133,22 +176,36 @@ export const DocumentLibraryPage: React.FC = () => {
       <div className="flex-1 p-8 max-w-7xl mx-auto w-full space-y-6">
         {/* Workspace Selector Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-mono-white p-4 rounded-lg border border-mono-border">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center flex-wrap gap-3">
             <FolderKanban size={18} className="text-mono-dark" />
             <span className="text-xs font-semibold text-mono-deepblack uppercase tracking-wider">
               Target Workspace:
             </span>
-            <select
-              value={selectedWsId}
-              onChange={(e) => setSelectedWsId(e.target.value)}
-              className="text-xs font-medium px-3 py-1.5 rounded-md bg-mono-offwhite border border-mono-border text-mono-deepblack focus:outline-none focus:ring-1 focus:ring-mono-black"
+            {workspaces.length > 0 ? (
+              <select
+                value={selectedWsId}
+                onChange={(e) => setSelectedWsId(e.target.value)}
+                className="text-xs font-medium px-3 py-1.5 rounded-md bg-mono-offwhite border border-mono-border text-mono-deepblack focus:outline-none focus:ring-1 focus:ring-mono-black"
+              >
+                {workspaces.map((ws) => (
+                  <option key={ws.id} value={ws.id}>
+                    {ws.name} ({ws.document_count} papers)
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="text-xs font-mono text-mono-medium italic">No workspaces created</span>
+            )}
+
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setIsCreateWsOpen(true)}
+              className="text-xs py-1 h-7 gap-1"
             >
-              {workspaces.map((ws) => (
-                <option key={ws.id} value={ws.id}>
-                  {ws.name} ({ws.document_count} papers)
-                </option>
-              ))}
-            </select>
+              <Plus size={12} />
+              <span>New Workspace</span>
+            </Button>
           </div>
 
           <div className="flex items-center gap-2">
@@ -172,28 +229,68 @@ export const DocumentLibraryPage: React.FC = () => {
         </div>
 
         {uploadError && (
-          <div className="p-3 text-xs text-red-700 bg-red-50 border border-red-200 rounded-md">
-            {uploadError}
+          <div className="p-3 text-xs text-red-700 bg-red-50 border border-red-200 rounded-md flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <AlertTriangle size={15} />
+              <span>{uploadError}</span>
+            </div>
+            <button
+              onClick={() => setUploadError(null)}
+              className="text-xs underline ml-4 hover:text-red-900"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {isUploading && (
+          <div className="p-4 bg-mono-offwhite border border-mono-border rounded-lg flex items-center gap-3 animate-pulse">
+            <Loader2 size={18} className="animate-spin text-mono-black" />
+            <div>
+              <p className="text-xs font-semibold text-mono-deepblack">
+                Uploading and ingesting research paper...
+              </p>
+              <p className="text-[11px] text-mono-medium">
+                PyMuPDF is extracting per-page text, sentence chunking, and indexing dense vectors in ChromaDB.
+              </p>
+            </div>
           </div>
         )}
 
         {/* Drag and Drop Dropzone */}
         <div
-          onDragOver={(e) => e.preventDefault()}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setIsDragging(true);
+          }}
+          onDragLeave={() => setIsDragging(false)}
           onDrop={(e) => {
             e.preventDefault();
+            setIsDragging(false);
             handleFileUpload(e.dataTransfer.files);
           }}
           onClick={() => fileInputRef.current?.click()}
-          className="border-2 border-dashed border-mono-border hover:border-mono-black rounded-xl p-8 text-center bg-mono-white transition-all cursor-pointer group"
+          className={`border-2 border-dashed rounded-xl p-8 text-center bg-mono-white transition-all cursor-pointer group ${
+            isDragging
+              ? 'border-mono-black bg-mono-light'
+              : 'border-mono-border hover:border-mono-black'
+          }`}
         >
-          <UploadCloud size={32} className="mx-auto text-mono-medium group-hover:text-mono-deepblack transition-colors mb-2" />
+          <UploadCloud
+            size={36}
+            className={`mx-auto mb-2 transition-colors ${
+              isDragging ? 'text-mono-black scale-110' : 'text-mono-medium group-hover:text-mono-deepblack'
+            }`}
+          />
           <h4 className="font-heading font-semibold text-sm text-mono-deepblack mb-1">
             Drag & Drop Research Papers (PDF)
           </h4>
-          <p className="text-xs text-mono-medium max-w-sm mx-auto">
+          <p className="text-xs text-mono-medium max-w-sm mx-auto mb-2">
             PyMuPDF automatically extracts per-page text, checks for scanned pages, generates sentence chunks, and indexes vectors in ChromaDB.
           </p>
+          <span className="inline-block text-[11px] font-mono text-mono-dark px-2.5 py-0.5 rounded bg-mono-offwhite border border-mono-border">
+            Supported: Academic PDF (up to 50MB)
+          </span>
         </div>
 
         {/* Documents Table */}
@@ -289,6 +386,54 @@ export const DocumentLibraryPage: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Create Workspace Modal */}
+      <Modal
+        isOpen={isCreateWsOpen}
+        onClose={() => setIsCreateWsOpen(false)}
+        title="Create Research Workspace"
+      >
+        <form onSubmit={handleCreateWorkspace} className="space-y-4 p-6">
+          <Input
+            label="Workspace Name"
+            placeholder="e.g. Attention Mechanisms & Transformers"
+            value={newWsName}
+            onChange={(e) => setNewWsName(e.target.value)}
+            required
+            autoFocus
+          />
+          <div>
+            <label className="block text-xs font-mono uppercase tracking-wider text-mono-dark mb-1">
+              Description (Optional)
+            </label>
+            <textarea
+              rows={3}
+              placeholder="Research focus, project scope, or paper cluster..."
+              value={newWsDesc}
+              onChange={(e) => setNewWsDesc(e.target.value)}
+              className="w-full px-3 py-2 text-xs bg-mono-offwhite border border-mono-border rounded-md text-mono-deepblack placeholder:text-mono-medium focus:outline-none focus:ring-1 focus:ring-mono-black resize-none"
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsCreateWsOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              size="sm"
+              isLoading={isCreatingWs}
+              disabled={!newWsName.trim()}
+            >
+              Create Workspace
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 };

@@ -130,3 +130,4 @@ async def delete_report(
     if report:
         await db.delete(report)
         await db.commit()
+

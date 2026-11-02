@@ -44,7 +44,7 @@ async def process_document_ingestion(document_id: str) -> bool:
             job.progress_percent = 25.0
             await db.commit()
 
-            pages, pdf_meta = pdf_service.extract_pages(pdf_bytes)
+            pages, pdf_meta = await asyncio.to_thread(pdf_service.extract_pages, pdf_bytes)
             doc.page_count = len(pages)
             doc.metadata_json = {**doc.metadata_json, **pdf_meta}
 
@@ -53,7 +53,8 @@ async def process_document_ingestion(document_id: str) -> bool:
             job.progress_percent = 50.0
             await db.commit()
 
-            chunks = pdf_service.chunk_document(
+            chunks = await asyncio.to_thread(
+                pdf_service.chunk_document,
                 document_id=doc.id,
                 workspace_id=doc.workspace_id,
                 user_id=doc.user_id,
@@ -66,7 +67,7 @@ async def process_document_ingestion(document_id: str) -> bool:
             job.progress_percent = 75.0
             await db.commit()
 
-            indexed_count = vector_service.index_chunks(chunks)
+            indexed_count = await asyncio.to_thread(vector_service.index_chunks, chunks)
 
             # 5. Success
             doc.status = "READY"
@@ -92,3 +93,4 @@ async def process_document_ingestion(document_id: str) -> bool:
 def dispatch_ingestion_task(document_id: str) -> None:
     """Non-blocking background task dispatcher."""
     asyncio.create_task(process_document_ingestion(document_id))
+

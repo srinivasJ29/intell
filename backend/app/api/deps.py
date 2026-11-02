@@ -1,7 +1,7 @@
 """FastAPI dependency injection utilities for authentication and database sessions."""
 
 from typing import Annotated, AsyncGenerator
-from fastapi import Depends, Header
+from fastapi import Depends, Header, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,13 +20,19 @@ from backend.app.models.document import Document
 async def get_current_user(
     db: Annotated[AsyncSession, Depends(get_db)],
     authorization: Annotated[str | None, Header()] = None,
+    token: Annotated[str | None, Query()] = None,
 ) -> User:
-    """Validate Bearer access token and return active User instance."""
-    if not authorization or not authorization.startswith("Bearer "):
-        raise UnauthorizedException("Missing or malformed Authorization header")
+    """Validate Bearer access token from Header or Query parameter and return active User instance."""
+    raw_token = None
+    if authorization and authorization.startswith("Bearer "):
+        raw_token = authorization.split("Bearer ", 1)[1].strip()
+    elif token:
+        raw_token = token.strip()
 
-    token = authorization.split("Bearer ", 1)[1].strip()
-    payload = decode_access_token(token)
+    if not raw_token:
+        raise UnauthorizedException("Missing Authorization header or token parameter")
+
+    payload = decode_access_token(raw_token)
     if not payload:
         raise UnauthorizedException("Invalid or expired access token")
 
@@ -88,3 +94,4 @@ async def get_document_for_user(
     if not document:
         raise NotFoundException(f"Document with ID '{document_id}' not found")
     return document
+

@@ -20,3 +20,4 @@ api_router.include_router(chat.router)
 api_router.include_router(comparisons.router)
 api_router.include_router(reports.router)
 api_router.include_router(analytics.router)
+

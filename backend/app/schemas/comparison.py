@@ -24,3 +24,4 @@ class ComparisonResponse(BaseModel):
     document_ids: List[str]
     document_titles: Dict[str, str]
     dimensions: List[ComparisonDimension]
+

@@ -158,3 +158,4 @@ class ChromaVectorService:
 
 embedding_service = EmbeddingService()
 vector_service = ChromaVectorService(embedding_service=embedding_service)
+

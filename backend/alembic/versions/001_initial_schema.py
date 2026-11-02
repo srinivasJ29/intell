@@ -179,3 +179,4 @@ def downgrade() -> None:
     op.drop_table('workspaces')
     op.drop_table('refresh_token_sessions')
     op.drop_table('users')
+

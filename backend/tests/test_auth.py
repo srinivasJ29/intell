@@ -117,3 +117,4 @@ async def test_registration_and_login_flow(async_client):
         json={"refresh_token": login_data["refresh_token"]},
     )
     assert stale_resp.status_code == 401
+

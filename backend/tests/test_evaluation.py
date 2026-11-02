@@ -104,3 +104,4 @@ def test_insufficient_evidence_refusal_metric():
     # Must refuse
     assert is_sufficient is False
     assert score < GROUNDEDNESS_THRESHOLD
+

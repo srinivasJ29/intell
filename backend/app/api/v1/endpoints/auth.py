@@ -23,6 +23,7 @@ from backend.app.core.security import (
 from backend.app.api.deps import get_current_user
 from backend.app.models.user import User
 from backend.app.models.session import RefreshTokenSession
+from backend.app.models.workspace import Workspace
 from backend.app.schemas.auth import (
     RefreshTokenRequest,
     TokenResponse,

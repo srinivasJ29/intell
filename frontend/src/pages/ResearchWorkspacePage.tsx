@@ -18,6 +18,9 @@ import {
   ChevronRight,
   Info,
   ExternalLink,
+  UploadCloud,
+  AlertTriangle,
+  Loader2,
 } from 'lucide-react';
 import { DocumentItem, Message, Conversation, Workspace } from '../types';
 
@@ -31,6 +34,9 @@ export const ResearchWorkspacePage: React.FC = () => {
   const [selectedDoc, setSelectedDoc] = useState<DocumentItem | null>(null);
   const [targetPdfPage, setTargetPdfPage] = useState<number>(1);
   const [docSearch, setDocSearch] = useState('');
+  const [isUploadingPaper, setIsUploadingPaper] = useState(false);
+  const [workspaceUploadError, setWorkspaceUploadError] = useState<string | null>(null);
+  const workspaceFileInputRef = useRef<HTMLInputElement>(null);
 
   // Chat State
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -78,6 +84,64 @@ export const ResearchWorkspacePage: React.FC = () => {
 
     loadWorkspaceData();
   }, [workspaceId]);
+
+  const reloadDocuments = async () => {
+    if (!workspaceId) return;
+    try {
+      const docsData = await api.request<DocumentItem[]>(`/workspaces/${workspaceId}/documents`);
+      setDocuments(docsData);
+      setSelectedDoc((prev) => {
+        if (!prev && docsData.length > 0) return docsData[0];
+        if (prev) {
+          const updated = docsData.find((d) => d.id === prev.id);
+          return updated || prev;
+        }
+        return null;
+      });
+    } catch (e) {
+      console.error('Failed to reload documents:', e);
+    }
+  };
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    const hasActiveProcessing = documents.some((d) => d.status === 'PENDING' || d.status === 'PROCESSING');
+    if (hasActiveProcessing) {
+      const timer = setInterval(reloadDocuments, 3000);
+      return () => clearInterval(timer);
+    }
+  }, [workspaceId, documents]);
+
+  const handleWorkspaceFileUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0 || !workspaceId) return;
+    const file = files[0];
+    if (file.type !== 'application/pdf' && !file.name.endsWith('.pdf')) {
+      setWorkspaceUploadError('Only PDF files are supported.');
+      return;
+    }
+
+    setIsUploadingPaper(true);
+    setWorkspaceUploadError(null);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const newDoc = await api.request<DocumentItem>(
+        `/workspaces/${workspaceId}/upload`,
+        {
+          method: 'POST',
+          body: formData,
+        }
+      );
+      setDocuments((prev) => [newDoc, ...prev]);
+      setSelectedDoc(newDoc);
+    } catch (err: any) {
+      setWorkspaceUploadError(err?.message || 'Failed to upload paper.');
+    } finally {
+      setIsUploadingPaper(false);
+      if (workspaceFileInputRef.current) workspaceFileInputRef.current.value = '';
+    }
+  };
 
   // 2. Load Conversation turns
   useEffect(() => {
@@ -321,8 +385,8 @@ export const ResearchWorkspacePage: React.FC = () => {
 
           {!isLeftCollapsed && (
             <>
-              {/* Document Filter Input */}
-              <div className="p-2 border-b border-mono-border">
+              {/* Document Filter Input and Upload Action */}
+              <div className="p-2 border-b border-mono-border space-y-2">
                 <div className="relative">
                   <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-mono-medium" />
                   <input
@@ -333,35 +397,76 @@ export const ResearchWorkspacePage: React.FC = () => {
                     className="w-full pl-7 pr-2 py-1 text-xs bg-mono-offwhite border border-mono-border rounded text-mono-deepblack focus:outline-none focus:ring-1 focus:ring-mono-black"
                   />
                 </div>
+
+                <input
+                  type="file"
+                  ref={workspaceFileInputRef}
+                  onChange={(e) => handleWorkspaceFileUpload(e.target.files)}
+                  accept=".pdf,application/pdf"
+                  className="hidden"
+                />
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => workspaceFileInputRef.current?.click()}
+                  isLoading={isUploadingPaper}
+                  className="w-full text-xs py-1 h-7 gap-1"
+                >
+                  <UploadCloud size={12} />
+                  <span>Upload PDF Paper</span>
+                </Button>
+
+                {workspaceUploadError && (
+                  <div className="p-1.5 text-[10px] text-red-700 bg-red-50 border border-red-200 rounded">
+                    {workspaceUploadError}
+                  </div>
+                )}
               </div>
 
               {/* Document List */}
               <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                {filteredDocs.map((doc) => {
-                  const isSelected = selectedDoc?.id === doc.id;
-                  return (
-                    <div
-                      key={doc.id}
-                      onClick={() => {
-                        setSelectedDoc(doc);
-                        setTargetPdfPage(1);
-                      }}
-                      className={`p-2.5 rounded-md cursor-pointer transition-all border text-left ${
-                        isSelected
-                          ? 'bg-mono-deepblack text-mono-white border-mono-deepblack shadow-subtle'
-                          : 'bg-mono-white hover:bg-mono-light border-mono-border text-mono-deepblack'
-                      }`}
+                {filteredDocs.length === 0 ? (
+                  <div className="p-4 text-center text-mono-medium text-xs space-y-2">
+                    <p>No papers in this workspace yet.</p>
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      onClick={() => workspaceFileInputRef.current?.click()}
+                      isLoading={isUploadingPaper}
+                      className="w-full text-xs"
                     >
-                      <div className="font-heading font-semibold text-xs truncate mb-1">
-                        {doc.title}
+                      <UploadCloud size={12} className="mr-1" />
+                      <span>Upload First Paper</span>
+                    </Button>
+                  </div>
+                ) : (
+                  filteredDocs.map((doc) => {
+                    const isSelected = selectedDoc?.id === doc.id;
+                    return (
+                      <div
+                        key={doc.id}
+                        onClick={() => {
+                          setSelectedDoc(doc);
+                          setTargetPdfPage(1);
+                        }}
+                        className={`p-2.5 rounded-md cursor-pointer transition-all border text-left ${
+                          isSelected
+                            ? 'bg-mono-deepblack text-mono-white border-mono-deepblack shadow-subtle'
+                            : 'bg-mono-white hover:bg-mono-light border-mono-border text-mono-deepblack'
+                        }`}
+                      >
+                        <div className="font-heading font-semibold text-xs truncate mb-1">
+                          {doc.title}
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] font-mono opacity-80">
+                          <span>{doc.page_count > 0 ? `${doc.page_count} pgs` : doc.status}</span>
+                          <span className="uppercase">{doc.status}</span>
+                        </div>
                       </div>
-                      <div className="flex items-center justify-between text-[10px] font-mono opacity-80">
-                        <span>{doc.page_count > 0 ? `${doc.page_count} pgs` : doc.status}</span>
-                        <span className="uppercase">{doc.status}</span>
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                )}
               </div>
             </>
           )}
@@ -481,3 +586,4 @@ export const ResearchWorkspacePage: React.FC = () => {
     </div>
   );
 };
+

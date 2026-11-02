@@ -147,3 +147,4 @@ async def delete_workspace(
     """Cascade delete workspace and all associated documents, chats, and reports."""
     await db.delete(workspace)
     await db.commit()
+

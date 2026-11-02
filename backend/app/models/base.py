@@ -44,3 +44,4 @@ class BaseModel(Base, TimestampMixin):
         default=generate_uuid,
         index=True,
     )
+

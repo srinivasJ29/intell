@@ -34,3 +34,4 @@ class RefreshTokenSession(BaseModel):
 
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="sessions")
+

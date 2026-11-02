@@ -63,3 +63,4 @@ def test_page_aware_chunking_with_metadata():
         assert chunk.user_id == "user_789"
         assert chunk.page_number in (1, 2)
         assert chunk.metadata["page_number"] in (1, 2)
+

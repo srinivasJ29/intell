@@ -65,3 +65,4 @@ class InsufficientEvidenceException(IntelliResearchException):
         code: str = "INSUFFICIENT_EVIDENCE",
     ):
         super().__init__(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail, code=code)
+

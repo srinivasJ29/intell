@@ -80,3 +80,4 @@ def generate_refresh_token() -> str:
 def hash_token(raw_token: str) -> str:
     """Compute SHA-256 hash of a token for safe database persistence."""
     return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+

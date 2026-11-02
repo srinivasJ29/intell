@@ -37,3 +37,4 @@ class ResearchReport(BaseModel):
     # Relationships
     workspace: Mapped["Workspace"] = relationship("Workspace", back_populates="reports")
     user: Mapped["User"] = relationship("User", back_populates="reports")
+

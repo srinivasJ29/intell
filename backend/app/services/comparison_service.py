@@ -89,3 +89,4 @@ class PaperComparisonService:
 
 
 comparison_service = PaperComparisonService()
+

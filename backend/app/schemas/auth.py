@@ -43,3 +43,4 @@ class UpdateUserRequest(BaseModel):
     full_name: Optional[str] = None
     current_password: Optional[str] = None
     new_password: Optional[str] = Field(None, min_length=8)
+

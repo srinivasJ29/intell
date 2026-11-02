@@ -26,3 +26,4 @@ class ReportResponse(BaseModel):
     metrics_json: Dict[str, Any] = {}
     created_at: datetime
     updated_at: datetime
+

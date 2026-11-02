@@ -160,3 +160,4 @@ async def delete_document(
     # 3. Delete from DB (cascades jobs)
     await db.delete(document)
     await db.commit()
+

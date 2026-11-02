@@ -47,3 +47,4 @@ class ChunkMetadata(BaseModel):
     chunk_index: int
     snippet: str
     score: Optional[float] = None
+
