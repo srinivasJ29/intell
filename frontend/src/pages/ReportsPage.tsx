@@ -7,6 +7,7 @@ import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { Input } from '../components/common/Input';
 import { Modal } from '../components/common/Modal';
+import { Badge } from '../components/common/Badge';
 import {
   FileText,
   Plus,
@@ -16,20 +17,28 @@ import {
   Calendar,
   Sparkles,
   Printer,
+  CheckSquare,
+  Square,
+  HelpCircle,
+  Files,
 } from 'lucide-react';
-import { Workspace, ResearchReport } from '../types';
+import { Workspace, ResearchReport, DocumentItem } from '../types';
 
 export const ReportsPage: React.FC = () => {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [selectedWsId, setSelectedWsId] = useState<string>('');
+  const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [reports, setReports] = useState<ResearchReport[]>([]);
   const [selectedReport, setSelectedReport] = useState<ResearchReport | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Modal
+  // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [reportType, setReportType] = useState('COMPREHENSIVE');
+  const [userQuery, setUserQuery] = useState('');
+  const [includeAllDocs, setIncludeAllDocs] = useState(true);
+  const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,14 +55,19 @@ export const ReportsPage: React.FC = () => {
     fetchWorkspaces();
   }, []);
 
-  const loadReports = async (wsId: string) => {
+  const loadWorkspaceData = async (wsId: string) => {
     if (!wsId) return;
     setIsLoading(true);
     try {
-      const data = await api.request<ResearchReport[]>(`/workspaces/${wsId}/reports`);
-      setReports(data);
-      if (data.length > 0) {
-        setSelectedReport(data[0]);
+      const [reportsData, docsData] = await Promise.all([
+        api.request<ResearchReport[]>(`/workspaces/${wsId}/reports`),
+        api.request<DocumentItem[]>(`/workspaces/${wsId}/documents`),
+      ]);
+      setReports(reportsData);
+      setDocuments(docsData);
+      setSelectedDocIds(docsData.map((d) => d.id));
+      if (reportsData.length > 0) {
+        setSelectedReport(reportsData[0]);
       } else {
         setSelectedReport(null);
       }
@@ -66,13 +80,39 @@ export const ReportsPage: React.FC = () => {
 
   useEffect(() => {
     if (selectedWsId) {
-      loadReports(selectedWsId);
+      loadWorkspaceData(selectedWsId);
     }
   }, [selectedWsId]);
+
+  const handleOpenModal = () => {
+    setTitle('');
+    setUserQuery('');
+    setIncludeAllDocs(true);
+    setSelectedDocIds(documents.map((d) => d.id));
+    setError(null);
+    setIsModalOpen(true);
+  };
+
+  const toggleDocSelection = (docId: string) => {
+    setSelectedDocIds((prev) => {
+      if (prev.includes(docId)) {
+        return prev.filter((id) => id !== docId);
+      } else {
+        return [...prev, docId];
+      }
+    });
+  };
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedWsId || !title.trim()) return;
+
+    const docIdsToUse = includeAllDocs ? documents.map((d) => d.id) : selectedDocIds;
+    if (docIdsToUse.length === 0) {
+      setError('Please select at least one uploaded document to analyze.');
+      return;
+    }
+
     setIsGenerating(true);
     setError(null);
 
@@ -82,8 +122,10 @@ export const ReportsPage: React.FC = () => {
         {
           method: 'POST',
           body: JSON.stringify({
-            title,
+            title: title.trim(),
             report_type: reportType,
+            document_ids: docIdsToUse,
+            custom_instructions: userQuery.trim() || undefined,
           }),
         }
       );
@@ -91,6 +133,7 @@ export const ReportsPage: React.FC = () => {
       setSelectedReport(newReport);
       setIsModalOpen(false);
       setTitle('');
+      setUserQuery('');
     } catch (err: any) {
       setError(err?.message || 'Failed to generate report.');
     } finally {
@@ -100,12 +143,12 @@ export const ReportsPage: React.FC = () => {
 
   const handleDelete = async (reportId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!window.confirm('Delete report permanently?')) return;
+    if (!window.confirm('Delete research report? This action cannot be undone.')) return;
     try {
       await api.request(`/reports/${reportId}`, { method: 'DELETE' });
       setReports((prev) => prev.filter((r) => r.id !== reportId));
       if (selectedReport?.id === reportId) {
-        setSelectedReport(reports[1] || null);
+        setSelectedReport(reports.find((r) => r.id !== reportId) || null);
       }
     } catch (err: any) {
       alert(err?.message || 'Failed to delete report');
@@ -125,7 +168,7 @@ export const ReportsPage: React.FC = () => {
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
-      <Header title="Research Reports" subtitle="Automated multi-document synthesis & publication exports" />
+      <Header title="Research Reports" subtitle="Multi-document synthesis, cross-paper comparison matrices, and user query answers" />
 
       <div className="flex-1 flex overflow-hidden">
         {/* Left Drawer: Report Registry */}
@@ -135,7 +178,7 @@ export const ReportsPage: React.FC = () => {
               <span className="text-xs font-mono font-semibold uppercase tracking-wider text-mono-dark">
                 Workspace:
               </span>
-              <Button size="sm" onClick={() => setIsModalOpen(true)} className="h-7 text-xs px-2.5">
+              <Button size="sm" onClick={handleOpenModal} className="h-7 text-xs px-2.5">
                 <Plus size={12} />
                 <span>New Report</span>
               </Button>
@@ -153,41 +196,41 @@ export const ReportsPage: React.FC = () => {
             </select>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+          <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
             {reports.length === 0 ? (
-              <div className="p-8 text-center text-xs text-mono-medium">
-                No reports compiled yet. Click 'New Report' to synthesize documents.
+              <div className="p-8 text-center text-mono-medium text-xs">
+                No reports compiled in this workspace yet. Click 'New Report' to synthesize your papers.
               </div>
             ) : (
               reports.map((r) => {
                 const isSelected = selectedReport?.id === r.id;
+                const docCount = r.metrics_json?.document_count ?? r.source_document_ids?.length ?? 1;
                 return (
                   <div
                     key={r.id}
                     onClick={() => setSelectedReport(r)}
-                    className={`p-3 rounded-lg border cursor-pointer transition-all ${
+                    className={`p-3 rounded-lg border text-left cursor-pointer transition-all ${
                       isSelected
                         ? 'bg-mono-deepblack text-mono-white border-mono-deepblack shadow-subtle'
                         : 'bg-mono-white hover:bg-mono-light border-mono-border text-mono-deepblack'
                     }`}
                   >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-mono-light/20 border border-current text-current">
-                        {r.report_type}
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="font-heading font-semibold text-xs leading-snug line-clamp-2">
+                        {r.title}
                       </span>
                       <button
                         onClick={(e) => handleDelete(r.id, e)}
-                        className="opacity-70 hover:opacity-100 p-0.5"
+                        className={`p-1 rounded opacity-60 hover:opacity-100 transition-opacity ${
+                          isSelected ? 'text-mono-white hover:bg-mono-dark' : 'text-mono-dark hover:bg-mono-light'
+                        }`}
                         title="Delete report"
                       >
                         <Trash2 size={12} />
                       </button>
                     </div>
-                    <h5 className="font-heading font-semibold text-xs line-clamp-1">
-                      {r.title}
-                    </h5>
-                    <div className="text-[10px] font-mono mt-1 opacity-70 flex items-center gap-1">
-                      <Calendar size={10} />
+                    <div className="flex items-center justify-between text-[10px] font-mono mt-2 opacity-75">
+                      <span>{docCount} {docCount === 1 ? 'Paper' : 'Papers'} Analyzed</span>
                       <span>{new Date(r.created_at).toLocaleDateString()}</span>
                     </div>
                   </div>
@@ -203,10 +246,13 @@ export const ReportsPage: React.FC = () => {
             <div className="flex-1 flex flex-col h-full overflow-hidden">
               {/* Report Action Bar */}
               <div className="h-12 bg-mono-white border-b border-mono-border px-6 flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-2">
-                  <FileText size={16} className="text-mono-dark" />
+                <div className="flex items-center gap-3 overflow-hidden">
+                  <FileText size={16} className="text-mono-dark shrink-0" />
                   <span className="font-heading font-semibold text-xs text-mono-deepblack truncate max-w-md">
                     {selectedReport.title}
+                  </span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-mono-light border border-mono-border text-mono-dark shrink-0 hidden sm:inline-block">
+                    {selectedReport.metrics_json?.document_count ?? selectedReport.source_document_ids?.length ?? 1} Papers • {selectedReport.metrics_json?.total_citations ?? 0} Citations • {selectedReport.metrics_json?.word_count ?? 0} Words
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -236,9 +282,13 @@ export const ReportsPage: React.FC = () => {
               <h4 className="font-heading font-semibold text-sm text-mono-deepblack mb-1">
                 No Report Selected
               </h4>
-              <p className="text-xs max-w-xs">
-                Select an existing report from the list or click 'New Report' to compile a synthesis across your research papers.
+              <p className="text-xs max-w-xs mb-4">
+                Select an existing report from the list or click 'New Report' to synthesize your papers, comparative matrix, and query answers.
               </p>
+              <Button size="sm" onClick={handleOpenModal}>
+                <Plus size={14} className="mr-1" />
+                <span>Create Research Report</span>
+              </Button>
             </div>
           )}
         </div>
@@ -249,8 +299,9 @@ export const ReportsPage: React.FC = () => {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         title="Synthesize Research Report"
+        maxWidth="lg"
       >
-        <form onSubmit={handleGenerate} className="space-y-4">
+        <form onSubmit={handleGenerate} className="space-y-4 p-6">
           {error && (
             <div className="p-2.5 text-xs text-red-700 bg-red-50 border border-red-200 rounded">
               {error}
@@ -259,7 +310,7 @@ export const ReportsPage: React.FC = () => {
 
           <Input
             label="Report Title"
-            placeholder="e.g. Comparative Synthesis of Efficient Transformer Architectures"
+            placeholder="e.g. Comparative Synthesis of Efficient Attention Architectures"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             required
@@ -275,13 +326,90 @@ export const ReportsPage: React.FC = () => {
               onChange={(e) => setReportType(e.target.value)}
               className="w-full px-3 py-2 text-xs bg-mono-white border border-mono-border rounded-md text-mono-deepblack focus:outline-none focus:ring-1 focus:ring-mono-black"
             >
-              <option value="COMPREHENSIVE">Comprehensive Literature Synthesis (Objectives, Methods, Results)</option>
+              <option value="COMPREHENSIVE">Comprehensive Literature Synthesis (Individual Profiles + Comparative Matrix + Query Synthesis)</option>
               <option value="COMPARATIVE">Comparative Benchmark Analysis (Matrix & Metrics Focus)</option>
-              <option value="EXECUTIVE_SUMMARY">Executive Briefing & Findings Overview</option>
+              <option value="QUERY_SYNTHESIS">Targeted Research Inquiry Answer across Corpus</option>
+              <option value="EXECUTIVE_SUMMARY">Executive Briefing & Key Milestones</option>
             </select>
           </div>
 
-          <div className="flex items-center justify-end gap-2 pt-2">
+          {/* Research Queries / Focus Questions */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold uppercase tracking-wider text-mono-dark flex items-center justify-between">
+              <span>Research Inquiries & Questions to Answer (Optional)</span>
+              <span className="font-normal font-mono text-[10px] text-mono-medium">Multi-Document RAG</span>
+            </label>
+            <textarea
+              rows={3}
+              placeholder="e.g. Compare the computational complexity and IO-awareness of attention mechanisms between these papers. Which approach achieves superior throughput on long sequences?"
+              value={userQuery}
+              onChange={(e) => setUserQuery(e.target.value)}
+              className="w-full px-3 py-2 text-xs bg-mono-offwhite border border-mono-border rounded-md text-mono-deepblack placeholder:text-mono-medium focus:outline-none focus:ring-1 focus:ring-mono-black resize-none"
+            />
+            <p className="text-[11px] text-mono-medium">
+              The engine will perform hybrid semantic retrieval across all selected files and synthesize a dedicated section answering this inquiry.
+            </p>
+          </div>
+
+          {/* File Selection: All or Individual */}
+          <div className="border border-mono-border rounded-lg p-3 bg-mono-offwhite space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-mono-deepblack uppercase tracking-wider flex items-center gap-1.5">
+                <Files size={14} />
+                <span>Scope of Uploaded Files ({documents.length})</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (includeAllDocs) {
+                    setIncludeAllDocs(false);
+                  } else {
+                    setIncludeAllDocs(true);
+                    setSelectedDocIds(documents.map((d) => d.id));
+                  }
+                }}
+                className="text-xs font-mono font-medium text-mono-dark hover:text-mono-deepblack underline"
+              >
+                {includeAllDocs ? 'Choose Individual Files' : 'Select All Files'}
+              </button>
+            </div>
+
+            {includeAllDocs ? (
+              <div className="p-2.5 bg-mono-white rounded border border-mono-border text-xs text-mono-dark flex items-center justify-between">
+                <span>Analyzing all <strong>{documents.length}</strong> uploaded documents in this workspace.</span>
+                <Badge variant="ready">All Included</Badge>
+              </div>
+            ) : (
+              <div className="max-h-36 overflow-y-auto space-y-1.5 p-1">
+                {documents.length === 0 ? (
+                  <p className="text-xs text-mono-medium italic">No uploaded papers in this workspace.</p>
+                ) : (
+                  documents.map((doc) => {
+                    const isChecked = selectedDocIds.includes(doc.id);
+                    return (
+                      <div
+                        key={doc.id}
+                        onClick={() => toggleDocSelection(doc.id)}
+                        className={`p-2 rounded border text-xs flex items-center justify-between cursor-pointer transition-colors ${
+                          isChecked ? 'bg-mono-white border-mono-deepblack text-mono-deepblack' : 'bg-mono-light border-mono-border text-mono-medium'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          {isChecked ? <CheckSquare size={14} className="text-mono-deepblack shrink-0" /> : <Square size={14} className="text-mono-medium shrink-0" />}
+                          <span className="font-medium truncate">{doc.title}</span>
+                        </div>
+                        <span className="text-[10px] font-mono shrink-0 ml-2">
+                          {doc.page_count > 0 ? `${doc.page_count} pgs` : doc.status}
+                        </span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-mono-border">
             <Button
               type="button"
               variant="outline"
@@ -290,7 +418,7 @@ export const ReportsPage: React.FC = () => {
             >
               Cancel
             </Button>
-            <Button type="submit" size="sm" isLoading={isGenerating}>
+            <Button type="submit" size="sm" isLoading={isGenerating} disabled={!title.trim() || documents.length === 0}>
               <Sparkles size={14} />
               <span>Compile Synthesis</span>
             </Button>
@@ -300,4 +428,3 @@ export const ReportsPage: React.FC = () => {
     </div>
   );
 };
-
