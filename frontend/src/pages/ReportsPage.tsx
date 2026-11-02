@@ -15,6 +15,7 @@ import {
   Trash2,
   Calendar,
   Sparkles,
+  Printer,
 } from 'lucide-react';
 import { Workspace, ResearchReport } from '../types';
 
@@ -209,6 +210,10 @@ export const ReportsPage: React.FC = () => {
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
+                  <Button size="sm" variant="outline" onClick={() => window.print()} className="h-8 text-xs gap-1.5">
+                    <Printer size={13} />
+                    <span>Print / Save PDF</span>
+                  </Button>
                   <Button size="sm" variant="outline" onClick={downloadMarkdown} className="h-8 text-xs gap-1.5">
                     <Download size={13} />
                     <span>Download Markdown (.md)</span>

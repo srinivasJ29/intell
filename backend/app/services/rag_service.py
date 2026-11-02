@@ -1,5 +1,6 @@
 """Advanced Hybrid RAG Engine combining Dense Vector search, BM25 keyword matching, RRF, and Citation Validation."""
 
+import asyncio
 import math
 import re
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
@@ -277,6 +278,7 @@ class HybridRAGEngine:
                 for word in summary.split(" "):
                     full_text += word + " "
                     yield {"type": "token", "content": word + " "}
+                    await asyncio.sleep(0.015)
         except Exception as e:
             fallback = f"Error generating research response: {str(e)}"
             yield {"type": "token", "content": fallback}

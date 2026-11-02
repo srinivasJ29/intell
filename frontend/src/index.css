@@ -58,6 +58,24 @@
   border: 1px solid #E5E5E5;
 }
 
+/* Print Optimization for PDF Export */
+@media print {
+  aside, nav, header, button, .no-print {
+    display: none !important;
+  }
+  body, html {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  article {
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+  }
+}
+
 .subtle-border {
   border-color: #E5E5E5;
 }

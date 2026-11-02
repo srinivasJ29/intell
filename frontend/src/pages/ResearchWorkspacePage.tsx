@@ -232,19 +232,22 @@ export const ResearchWorkspacePage: React.FC = () => {
       const decoder = new TextDecoder();
       let streamedAnswer = '';
       let activeCitations: any[] = [];
+      let buffer = '';
 
       if (reader) {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
 
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split('\n\n');
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop() || '';
 
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
+          for (const part of parts) {
+            const trimmed = part.trim();
+            if (trimmed.startsWith('data: ')) {
               try {
-                const event = JSON.parse(line.replace('data: ', ''));
+                const event = JSON.parse(trimmed.slice(6));
                 if (event.type === 'token') {
                   streamedAnswer += event.content;
                   setMessages((prev) => {
@@ -257,7 +260,7 @@ export const ResearchWorkspacePage: React.FC = () => {
                   });
                 } else if (event.type === 'done') {
                   activeCitations = event.citations || [];
-                  if (event.conversation_id && !activeConvId) {
+                  if (event.conversation_id) {
                     setActiveConvId(event.conversation_id);
                   }
                   setMessages((prev) => {
@@ -274,11 +277,39 @@ export const ResearchWorkspacePage: React.FC = () => {
                   });
                 }
               } catch (parseErr) {
-                // Ignore SSE framing artifacts
+                // Ignore parse errors on malformed chunks
               }
             }
           }
         }
+
+        // Process any final remaining buffer
+        if (buffer.trim().startsWith('data: ')) {
+          try {
+            const event = JSON.parse(buffer.trim().slice(6));
+            if (event.type === 'done') {
+              activeCitations = event.citations || [];
+              if (event.conversation_id) setActiveConvId(event.conversation_id);
+              setMessages((prev) => {
+                const next = [...prev];
+                const lastIdx = next.length - 1;
+                if (lastIdx >= 0 && next[lastIdx].role === 'assistant') {
+                  next[lastIdx] = {
+                    ...next[lastIdx],
+                    id: event.message_id || next[lastIdx].id,
+                    citations_json: activeCitations,
+                  };
+                }
+                return next;
+              });
+            }
+          } catch {}
+        }
+
+        // Reload conversation list to show new or updated chat title
+        api.request<Conversation[]>(`/workspaces/${workspaceId}/conversations`)
+          .then((convs) => setConversations(convs))
+          .catch(() => {});
       }
     } catch (err: any) {
       if (err.name !== 'AbortError') {
