@@ -23,6 +23,7 @@ import {
   Files,
 } from 'lucide-react';
 import { Workspace, ResearchReport, DocumentItem } from '../types';
+import { MermaidDiagram } from '../components/common/MermaidDiagram';
 
 export const ReportsPage: React.FC = () => {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
@@ -268,9 +269,64 @@ export const ReportsPage: React.FC = () => {
               </div>
 
               {/* Markdown Document Content */}
-              <div className="flex-1 overflow-y-auto p-12 max-w-4xl mx-auto w-full">
-                <article className="bg-mono-white border border-mono-border rounded-xl p-10 shadow-subtle prose prose-sm max-w-none text-mono-deepblack font-sans prose-headings:font-heading prose-headings:font-bold prose-headings:tracking-tight prose-headings:text-mono-deepblack prose-table:border prose-table:border-mono-border prose-th:bg-mono-light prose-th:border prose-th:border-mono-border prose-td:border prose-td:border-mono-border prose-blockquote:border-mono-black prose-blockquote:bg-mono-light prose-blockquote:py-1 prose-blockquote:px-3">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              <div className="flex-1 overflow-y-auto p-8 md:p-12 max-w-4xl mx-auto w-full space-y-6">
+                {/* Executive KPI Summary Cards */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="p-3 bg-mono-white border border-mono-border rounded-lg shadow-subtle">
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-mono-medium block">
+                      Scope of Analysis
+                    </span>
+                    <span className="font-heading font-bold text-lg text-mono-deepblack mt-0.5 block">
+                      {selectedReport.metrics_json?.document_count ?? selectedReport.source_document_ids?.length ?? 1} Papers
+                    </span>
+                  </div>
+
+                  <div className="p-3 bg-mono-white border border-mono-border rounded-lg shadow-subtle">
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-mono-medium block">
+                      Dimensions Evaluated
+                    </span>
+                    <span className="font-heading font-bold text-lg text-mono-deepblack mt-0.5 block">
+                      {selectedReport.metrics_json?.dimensions_evaluated ?? 8} Dimensions
+                    </span>
+                  </div>
+
+                  <div className="p-3 bg-mono-white border border-mono-border rounded-lg shadow-subtle">
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-mono-medium block">
+                      Verified Citations
+                    </span>
+                    <span className="font-heading font-bold text-lg text-mono-deepblack mt-0.5 block">
+                      {selectedReport.metrics_json?.total_citations ?? 0} Evidence Passages
+                    </span>
+                  </div>
+
+                  <div className="p-3 bg-mono-white border border-mono-border rounded-lg shadow-subtle">
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-mono-medium block">
+                      Word Count
+                    </span>
+                    <span className="font-heading font-bold text-lg text-mono-deepblack mt-0.5 block">
+                      {selectedReport.metrics_json?.word_count ?? selectedReport.content_markdown.split(/\s+/).length} Words
+                    </span>
+                  </div>
+                </div>
+
+                <article className="bg-mono-white border border-mono-border rounded-xl p-8 md:p-12 shadow-subtle prose prose-sm max-w-none text-mono-deepblack font-sans prose-headings:font-heading prose-headings:font-bold prose-headings:tracking-tight prose-headings:text-mono-deepblack prose-table:border prose-table:border-mono-border prose-th:bg-mono-light prose-th:border prose-th:border-mono-border prose-td:border prose-td:border-mono-border prose-blockquote:border-mono-black prose-blockquote:bg-mono-light prose-blockquote:py-1.5 prose-blockquote:px-4 prose-blockquote:rounded-r">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      code({ node, className, children, ...props }) {
+                        const match = /language-(\w+)/.exec(className || '');
+                        const language = match ? match[1] : '';
+                        if (language === 'mermaid') {
+                          return <MermaidDiagram code={String(children).replace(/\n$/, '')} />;
+                        }
+                        return (
+                          <code className={className} {...props}>
+                            {children}
+                          </code>
+                        );
+                      },
+                    }}
+                  >
                     {selectedReport.content_markdown}
                   </ReactMarkdown>
                 </article>
