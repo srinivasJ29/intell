@@ -21,6 +21,18 @@ STANDARD_DIMENSIONS = [
 ]
 
 
+def clean_sentence_boundary(text: str, max_length: int = 400) -> str:
+    """Extract a complete, unchopped passage up to a clean sentence boundary."""
+    clean = " ".join(text.split())
+    if len(clean) <= max_length:
+        return clean
+    sub = clean[:max_length]
+    last_punct = max(sub.rfind("."), sub.rfind("?"), sub.rfind("!"), sub.rfind(";"))
+    if last_punct > 120:
+        return sub[: last_punct + 1].strip()
+    return sub.strip() + "..."
+
+
 class PaperComparisonService:
     """Extract and synthesize multi-paper comparative matrices."""
 
@@ -54,17 +66,14 @@ class PaperComparisonService:
 
                 if chunks:
                     top_chunk = chunks[0]
-                    summary_text = (
-                        f"{top_chunk['text'][:280]}..."
-                        if len(top_chunk["text"]) > 280
-                        else top_chunk["text"]
-                    )
+                    summary_text = clean_sentence_boundary(top_chunk["text"], max_length=420)
+                    snippet_text = clean_sentence_boundary(top_chunk["text"], max_length=240)
                     citations = [
                         {
                             "document_id": doc_id,
                             "document_title": doc_title,
                             "page_number": top_chunk["page_number"],
-                            "snippet": top_chunk["text"][:150],
+                            "snippet": snippet_text,
                         }
                     ]
                 else:

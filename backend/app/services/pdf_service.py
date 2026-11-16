@@ -41,50 +41,113 @@ class PDFProcessingService:
         self.min_scanned_char_threshold = min_scanned_char_threshold
 
     def extract_pages(self, pdf_bytes: bytes) -> Tuple[List[ExtractedPage], Dict[str, Any]]:
-        """Extract text per page using PyMuPDF and detect scanned status."""
+        """Extract text per page using PyMuPDF (PDF, EPUB, XPS) or text decoder for plain files (TXT, MD, CSV, JSON)."""
+        doc = None
+        # First attempt: Try PyMuPDF parsing as PDF or auto-detected document
         try:
             doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-        except Exception as e:
-            raise BadRequestException(f"Failed to parse PDF binary: {str(e)}")
+        except Exception:
+            try:
+                doc = fitz.open(stream=pdf_bytes)
+            except Exception:
+                doc = None
 
-        if len(doc) == 0:
-            raise BadRequestException("PDF document is empty (0 pages).")
+        if doc is not None and len(doc) > 0:
+            pages: List[ExtractedPage] = []
+            total_text_length = 0
 
-        pages: List[ExtractedPage] = []
-        total_text_length = 0
+            pdf_meta = {
+                "title": doc.metadata.get("title") or "",
+                "author": doc.metadata.get("author") or "",
+                "subject": doc.metadata.get("subject") or "",
+                "keywords": doc.metadata.get("keywords") or "",
+                "creator": doc.metadata.get("creator") or "",
+                "page_count": len(doc),
+            }
 
-        pdf_meta = {
-            "title": doc.metadata.get("title") or "",
-            "author": doc.metadata.get("author") or "",
-            "subject": doc.metadata.get("subject") or "",
-            "keywords": doc.metadata.get("keywords") or "",
-            "creator": doc.metadata.get("creator") or "",
-            "page_count": len(doc),
-        }
+            for i, page in enumerate(doc):
+                page_num = i + 1  # 1-indexed
+                raw_text = page.get_text("text") or ""
+                cleaned_text = self._normalize_text(raw_text)
+                char_count = len(cleaned_text)
+                total_text_length += char_count
 
-        for i, page in enumerate(doc):
-            page_num = i + 1  # 1-indexed
-            raw_text = page.get_text("text") or ""
-            # Text normalization
-            cleaned_text = self._normalize_text(raw_text)
-            char_count = len(cleaned_text)
-            total_text_length += char_count
-
-            is_scanned = char_count < self.min_scanned_char_threshold
-            pages.append(
-                ExtractedPage(
-                    page_number=page_num,
-                    text=cleaned_text,
-                    char_count=char_count,
-                    is_scanned=is_scanned,
+                is_scanned = char_count < self.min_scanned_char_threshold
+                pages.append(
+                    ExtractedPage(
+                        page_number=page_num,
+                        text=cleaned_text,
+                        char_count=char_count,
+                        is_scanned=is_scanned,
+                    )
                 )
-            )
 
-        doc.close()
-        pdf_meta["is_mostly_scanned"] = (
-            total_text_length < (len(pages) * self.min_scanned_char_threshold)
-        )
-        return pages, pdf_meta
+            doc.close()
+            pdf_meta["is_mostly_scanned"] = (
+                total_text_length < (len(pages) * self.min_scanned_char_threshold)
+            )
+            return pages, pdf_meta
+
+        # Second attempt: Universal text file decoding (TXT, MD, CSV, JSON, LOG)
+        text_content = None
+        for enc in ["utf-8", "utf-8-sig", "latin-1", "cp1252"]:
+            try:
+                text_content = pdf_bytes.decode(enc)
+                break
+            except UnicodeDecodeError:
+                continue
+
+        if text_content is not None and text_content.strip():
+            paragraphs = [p.strip() for p in text_content.split("\n\n") if p.strip()]
+            pages = []
+            current_page_text: List[str] = []
+            current_len = 0
+            page_idx = 1
+
+            for p in paragraphs:
+                p_clean = self._normalize_text(p)
+                if not p_clean:
+                    continue
+                if current_len + len(p_clean) > 2500 and current_page_text:
+                    p_text = "\n\n".join(current_page_text)
+                    pages.append(
+                        ExtractedPage(
+                            page_number=page_idx,
+                            text=p_text,
+                            char_count=len(p_text),
+                            is_scanned=False,
+                        )
+                    )
+                    page_idx += 1
+                    current_page_text = [p_clean]
+                    current_len = len(p_clean)
+                else:
+                    current_page_text.append(p_clean)
+                    current_len += len(p_clean)
+
+            if current_page_text:
+                p_text = "\n\n".join(current_page_text)
+                pages.append(
+                    ExtractedPage(
+                        page_number=page_idx,
+                        text=p_text,
+                        char_count=len(p_text),
+                        is_scanned=False,
+                    )
+                )
+
+            meta = {
+                "title": "Text Document",
+                "author": "",
+                "subject": "",
+                "keywords": "",
+                "creator": "IntelliResearch Ingestion",
+                "page_count": len(pages),
+                "is_mostly_scanned": False,
+            }
+            return pages, meta
+
+        raise BadRequestException("Failed to parse file binary. Supported formats: PDF, TXT, MD, CSV, JSON, EPUB, XPS.")
 
     def _normalize_text(self, text: str) -> str:
         """Clean hyphenated line breaks, superfluous spaces, and control characters."""

@@ -100,6 +100,41 @@ class ChromaVectorService:
             }
         )
 
+    def get_document_chunks(
+        self,
+        workspace_id: str,
+        user_id: str,
+        document_id: str,
+    ) -> List[Dict[str, Any]]:
+        """Retrieve all indexed chunks for a specific document, ordered by page and chunk index."""
+        try:
+            results = self.collection.get(
+                where={
+                    "$and": [
+                        {"workspace_id": {"$eq": workspace_id}},
+                        {"user_id": {"$eq": user_id}},
+                        {"document_id": {"$eq": document_id}},
+                    ]
+                },
+                include=["documents", "metadatas"],
+            )
+            chunks = []
+            if results and results.get("ids"):
+                for i in range(len(results["ids"])):
+                    meta = results["metadatas"][i]
+                    chunks.append({
+                        "chunk_id": results["ids"][i],
+                        "document_id": meta.get("document_id"),
+                        "document_title": meta.get("document_title"),
+                        "page_number": int(meta.get("page_number", 1)),
+                        "chunk_index": int(meta.get("chunk_index", 0)),
+                        "text": results["documents"][i],
+                    })
+            chunks.sort(key=lambda x: (x["page_number"], x["chunk_index"]))
+            return chunks
+        except Exception:
+            return []
+
     def search_semantic(
         self,
         workspace_id: str,
